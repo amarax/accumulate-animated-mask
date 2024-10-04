@@ -5,7 +5,6 @@
     <style>
       #drop_zone {
         width: 300px;
-        height: 200px;
         border: 2px dashed #bbb;
         border-radius: 5px;
         text-align: center;
@@ -28,6 +27,11 @@
       .fit-width {
         max-width: 100%;
         height: auto;
+      }
+      .columns {
+        display: grid;
+        grid-template-columns: 1fr 1fr 1fr;
+        grid-gap: 8px;
       }
     </style>
     <script>
@@ -394,60 +398,62 @@
     </script>
   </head>
   <body>
-    <div id="drop_zone">Drag and drop images or a video file here</div>
-    <div id="source">
-      <div id="source_video_container" class="hidden">
-        <video id="source_video" class="fit-width" controls></video>
-        <div id="frame_range_container">
-          <label for="frame_range">Select Frame Range:</label>
-          <input
-            type="range"
-            id="frame_range_start"
-            min="0"
-            max="100"
-            value="0"
-            oninput="updateFrameStart()"
-          />
-          <span id="frame_range_start_value">0</span>
-          <input
-            type="range"
-            id="frame_range_end"
-            min="0"
-            max="100"
-            value="100"
-            oninput="updateFrameEnd()"
-          />
-          <span id="frame_range_end_value">100</span>
+    <div class="columns">
+      <div id="source">
+        <div id="drop_zone">Drag and drop images or a video file here</div>
+        <div id="source_video_container" class="hidden">
+          <video id="source_video" class="fit-width" controls></video>
+          <div id="frame_range_container">
+            <label for="frame_range">Select Frame Range:</label>
+            <input
+              type="range"
+              id="frame_range_start"
+              min="0"
+              max="100"
+              value="0"
+              oninput="updateFrameStart()"
+            />
+            <span id="frame_range_start_value">0</span>
+            <input
+              type="range"
+              id="frame_range_end"
+              min="0"
+              max="100"
+              value="100"
+              oninput="updateFrameEnd()"
+            />
+            <span id="frame_range_end_value">100</span>
+          </div>
         </div>
+        <img id="source_image" class="fit-width hidden" />
       </div>
-      <img id="source_image" class="fit-width hidden" />
-    </div>
-    <div id="levels">
-      <canvas id="levels_canvas" class="fit-width"></canvas>
-      <input
-        type="range"
-        id="levels_min"
-        min="0"
-        max="255"
-        value="0"
-        oninput="applyLevels()"
-      />
-      <input
-        type="range"
-        id="levels_max"
-        min="0"
-        max="255"
-        value="255"
-        oninput="applyLevels()"
-      />
+      <div id="levels">
+        <canvas id="levels_canvas" class="fit-width"></canvas>
+        <input
+          type="range"
+          id="levels_min"
+          min="0"
+          max="255"
+          value="0"
+          oninput="applyLevels()"
+        />
+        <input
+          type="range"
+          id="levels_max"
+          min="0"
+          max="255"
+          value="255"
+          oninput="applyLevels()"
+        />
 
-      <button id="process_button" disabled onclick="processFiles()">
-        Process
-      </button>
-    </div>
-    <div id="result">
-      <canvas id="result_canvas" class="fit-width"></canvas><br />
-      <a id="download_link" href="#" download="result.png">Download Result</a>
+        <button id="process_button" disabled onclick="processFiles()">
+          Process
+        </button>
+      </div>
+      <div id="result">
+        <canvas id="result_canvas" class="fit-width"></canvas><br />
+        <a id="download_link" href="#" download="result.png">Download Result</a>
+      </div>
     </div>
     <script>
       document.addEventListener("DOMContentLoaded", function () {
