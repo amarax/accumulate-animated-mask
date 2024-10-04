@@ -34,6 +34,8 @@
       var imageFiles = [];
       var videoFile = null;
 
+      let levelsPreviewImage = null;
+
       function handleDragOver(evt) {
         evt.stopPropagation();
         evt.preventDefault();
@@ -103,6 +105,58 @@
         if (imageFiles.length > 0 || videoFile) {
           processButton.disabled = false;
         }
+
+        if (imageFiles.length > 0) {
+          // Load the first image file or the first frame of the video file into the levels canvas
+          var img = new Image();
+          img.src = URL.createObjectURL(imageFiles[0]);
+          img.onload = function () {
+            // Update the levels preview image
+            levelsPreviewImage = img;
+
+            var canvas = document.getElementById("levels_canvas");
+            var ctx = canvas.getContext("2d");
+            canvas.width = img.width;
+            canvas.height = img.height;
+
+            applyLevels();
+          };
+        } else if (videoFile) {
+          // Load the first frame of the video file into the levels canvas
+          var video = document.getElementById("source_video");
+          video.preload = "auto";
+          video.muted = true;
+          video.autoplay = false;
+          video.src = URL.createObjectURL(videoFile);
+
+          video.addEventListener("loadedmetadata", function () {});
+        }
+      }
+
+      function applyLevels() {
+        if (!levelsPreviewImage) {
+          return;
+        }
+
+        var canvas = document.getElementById("levels_canvas");
+        var ctx = canvas.getContext("2d");
+        ctx.drawImage(levelsPreviewImage, 0, 0);
+
+        var imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        var data = imageData.data;
+
+        var min = parseInt(document.getElementById("levels_min").value);
+        var max = parseInt(document.getElementById("levels_max").value);
+        for (var i = 0; i < data.length; i += 4) {
+          var grey =
+            0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
+
+          grey = (grey - min) * (255 / (max - min));
+          grey = Math.max(0, Math.min(255, grey));
+          data[i] = data[i + 1] = data[i + 2] = grey;
+        }
+
+        ctx.putImageData(imageData, 0, 0);
       }
 
       function processFiles() {
@@ -194,8 +248,6 @@
         var frameRate = 30; // Assuming a frame rate of 30 fps, adjust as needed
         var frameInterval = 1 / frameRate;
 
-        console.log(startFrame, endFrame);
-
         function captureFrame(time) {
           return new Promise((resolve) => {
             video.addEventListener("seeked", function onSeeked() {
@@ -215,7 +267,11 @@
         }
 
         async function process() {
-          for (var time = startFrame; time < endFrame+1; time += frameInterval) {
+          for (
+            var time = startFrame;
+            time < endFrame + 1;
+            time += frameInterval
+          ) {
             await captureFrame(time);
           }
           processFrames(images, width, height);
@@ -235,6 +291,9 @@
         var accumulatedImageData = ctx.createImageData(imageWidth, imageHeight);
         var accumulatedData = accumulatedImageData.data;
 
+        var min = parseInt(document.getElementById("levels_min").value);
+        var max = parseInt(document.getElementById("levels_max").value);
+
         // For each image, process it and update the accumulated image data
         for (var i = 0; i < images.length; i++) {
           ctx.drawImage(images[i], 0, 0);
@@ -247,8 +306,8 @@
           for (var j = 0; j < data.length; j += 4) {
             var grey =
               0.299 * data[j] + 0.587 * data[j + 1] + 0.114 * data[j + 2];
-            grey = (grey - 50) * (255 / (200 - 50)); // Example levels operation
-            grey = Math.max(0, Math.min(255, grey)); // Clamp values between 0 and 255
+            grey = (grey - min) * (255 / (max - min));
+            grey = Math.max(0, Math.min(255, grey));
             data[j] = data[j + 1] = data[j + 2] = grey;
           }
 
@@ -293,6 +352,18 @@
 
         // Seek the video to the start frame
         video.currentTime = start;
+        video.addEventListener("seeked", function onSeeked() {
+          let canvas = document.getElementById("levels_canvas");
+          let ctx = canvas.getContext("2d");
+
+          ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+          video.removeEventListener("seeked", onSeeked);
+          levelsPreviewImage = new Image();
+          levelsPreviewImage.src = canvas.toDataURL();
+          levelsPreviewImage.addEventListener("load", function () {
+            applyLevels();
+          });
+        });
       }
 
       function updateFrameEnd() {
@@ -307,6 +378,18 @@
 
         // Seek the video to the end frame
         video.currentTime = end;
+        video.addEventListener("seeked", function onSeeked() {
+          let canvas = document.getElementById("levels_canvas");
+          let ctx = canvas.getContext("2d");
+
+          ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+          video.removeEventListener("seeked", onSeeked);
+          levelsPreviewImage = new Image();
+          levelsPreviewImage.src = canvas.toDataURL();
+          levelsPreviewImage.addEventListener("load", function () {
+            applyLevels();
+          });
+        });
       }
     </script>
   </head>
@@ -338,6 +421,26 @@
         </div>
       </div>
       <img id="source_image" class="fit-width hidden" />
+    </div>
+    <div id="levels">
+      <canvas id="levels_canvas" class="fit-width"></canvas>
+      <input
+        type="range"
+        id="levels_min"
+        min="0"
+        max="255"
+        value="0"
+        oninput="applyLevels()"
+      />
+      <input
+        type="range"
+        id="levels_max"
+        min="0"
+        max="255"
+        value="255"
+        oninput="applyLevels()"
+      />
+
       <button id="process_button" disabled onclick="processFiles()">
         Process
       </button>
@@ -362,6 +465,22 @@
         frameRangeEnd.max = duration;
         // frameRangeEnd.value = duration;
         updateFrameRangeDisplay();
+
+        var canvas = document.getElementById("levels_canvas");
+        var ctx = canvas.getContext("2d");
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+
+        video.currentTime = parseInt(frameRangeStart.value);
+        video.addEventListener("seeked", function onSeeked() {
+          ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+          video.removeEventListener("seeked", onSeeked);
+          levelsPreviewImage = new Image();
+          levelsPreviewImage.src = canvas.toDataURL();
+          levelsPreviewImage.addEventListener("load", function () {
+            applyLevels();
+          });
+        });
       });
     </script>
   </body>
