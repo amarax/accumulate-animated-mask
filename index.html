@@ -1,0 +1,368 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>Image Sequence Accumulator</title>
+    <style>
+      #drop_zone {
+        width: 300px;
+        height: 200px;
+        border: 2px dashed #bbb;
+        border-radius: 5px;
+        text-align: center;
+        padding: 50px;
+        font-size: 20px;
+        color: #bbb;
+        margin: 20px auto;
+      }
+      #result {
+        text-align: center;
+        margin: 20px;
+      }
+      #download_link {
+        display: none;
+        margin-top: 20px;
+      }
+      .hidden {
+        display: none;
+      }
+      .fit-width {
+        max-width: 100%;
+        height: auto;
+      }
+    </style>
+    <script>
+      var imageFiles = [];
+      var videoFile = null;
+
+      function handleDragOver(evt) {
+        evt.stopPropagation();
+        evt.preventDefault();
+        evt.dataTransfer.dropEffect = "copy"; // Explicitly show this is a copy.
+      }
+
+      function handleFileSelect(evt) {
+        evt.stopPropagation();
+        evt.preventDefault();
+
+        var files = evt.dataTransfer.files; // FileList object.
+
+        // Process the files
+        processSourceFiles(files);
+      }
+
+      function processSourceFiles(files) {
+        // Check if files are images or video
+        imageFiles = [];
+        videoFile = null;
+
+        // Clear the previous files
+        var img = document.getElementById("source_image");
+        img.src = "";
+        img.classList.add("hidden");
+
+        var video = document.getElementById("source_video");
+        video.src = "";
+        var videoContainer = document.getElementById("source_video_container");
+        videoContainer.classList.add("hidden");
+
+        var processButton = document.getElementById("process_button");
+        processButton.disabled = true;
+
+        for (var i = 0; i < files.length; i++) {
+          var file = files[i];
+          if (file.type.match("image.*")) {
+            imageFiles.push(file);
+
+            // Update the preview with the first image
+            var reader = new FileReader();
+            reader.onload = function (e) {
+              var img = document.getElementById("source_image");
+              img.src = e.target.result;
+
+              // Remove the hidden class
+              img.classList.remove("hidden");
+            };
+            reader.readAsDataURL(file);
+          } else if (file.type.match("video.*")) {
+            videoFile = file;
+
+            // Update the preview with the video
+            var video = document.getElementById("source_video");
+            video.src = URL.createObjectURL(file);
+
+            // Remove the hidden class
+            videoContainer.classList.remove("hidden");
+
+            // Update the frame range sliders based on the loaded video
+            var frameRangeStart = document.getElementById("frame_range_start");
+            var frameRangeEnd = document.getElementById("frame_range_end");
+          }
+        }
+
+        // If the source is valid, enable the process button
+        if (imageFiles.length > 0 || videoFile) {
+          processButton.disabled = false;
+        }
+      }
+
+      function processFiles() {
+        // Disable the process button to prevent multiple clicks
+        document.getElementById("process_button").disabled = true;
+
+        // Create the result canvas
+
+        var canvas = document.getElementById("result_canvas");
+        var ctx = canvas.getContext("2d");
+        var imageWidth = 1920; // Set your desired width
+        var imageHeight = 1080; // Set your desired height
+        canvas.width = imageWidth;
+        canvas.height = imageHeight;
+
+        // Start with a black background
+        ctx.fillStyle = "black";
+
+        if (imageFiles.length > 0) {
+          processImageFiles(imageFiles);
+        } else if (videoFile) {
+          processVideoFile(videoFile);
+        } else {
+          alert("Please drop image files or a video file.");
+        }
+
+        // Re-enable the process button after processing
+        document.getElementById("process_button").disabled = false;
+      }
+
+      function processImageFiles(imageFiles) {
+        // Read all image files and process them
+        var images = [];
+        var loadedImages = 0;
+
+        // To determine the width and height of the images
+        var imageWidth = 0;
+        var imageHeight = 0;
+
+        for (var i = 0; i < imageFiles.length; i++) {
+          (function (file) {
+            var reader = new FileReader();
+            reader.onload = function (e) {
+              var img = new Image();
+              img.onload = function () {
+                if (imageWidth === 0 && imageHeight === 0) {
+                  imageWidth = img.width;
+                  imageHeight = img.height;
+                }
+                images.push(img);
+                loadedImages++;
+                if (loadedImages === imageFiles.length) {
+                  // All images are loaded
+                  processFrames(images, imageWidth, imageHeight);
+                }
+              };
+              img.src = e.target.result;
+            };
+            reader.readAsDataURL(file);
+          })(imageFiles[i]);
+        }
+      }
+
+      function processVideoFile(videoFile) {
+        // Load the video and extract frames
+        var video = document.getElementById("source_video");
+        video.preload = "auto";
+        video.muted = true;
+        video.autoplay = false;
+        video.src = URL.createObjectURL(videoFile);
+
+        video.addEventListener("loadedmetadata", function () {
+          extractVideoFrames(video);
+        });
+      }
+
+      function extractVideoFrames(video) {
+        let duration = video.duration;
+        let width = video.videoWidth;
+        let height = video.videoHeight;
+
+        let images = [];
+        var startFrame = parseInt(
+          document.getElementById("frame_range_start").value
+        );
+        var endFrame = parseInt(
+          document.getElementById("frame_range_end").value
+        );
+        var frameRate = 30; // Assuming a frame rate of 30 fps, adjust as needed
+        var frameInterval = 1 / frameRate;
+
+        console.log(startFrame, endFrame);
+
+        function captureFrame(time) {
+          return new Promise((resolve) => {
+            video.addEventListener("seeked", function onSeeked() {
+              var canvas = document.createElement("canvas");
+              canvas.width = width;
+              canvas.height = height;
+              var ctx = canvas.getContext("2d");
+              ctx.drawImage(video, 0, 0, width, height);
+              var img = new Image();
+              img.src = canvas.toDataURL();
+              images.push(img);
+              video.removeEventListener("seeked", onSeeked);
+              resolve();
+            });
+            video.currentTime = time;
+          });
+        }
+
+        async function process() {
+          for (var time = startFrame; time < endFrame+1; time += frameInterval) {
+            await captureFrame(time);
+          }
+          processFrames(images, width, height);
+        }
+
+        process();
+      }
+
+      function processFrames(images, imageWidth, imageHeight) {
+        // Create the final canvas
+        let canvas = document.getElementById("result_canvas");
+        canvas.width = imageWidth;
+        canvas.height = imageHeight;
+        let ctx = canvas.getContext("2d");
+
+        // Initialize accumulated image data
+        var accumulatedImageData = ctx.createImageData(imageWidth, imageHeight);
+        var accumulatedData = accumulatedImageData.data;
+
+        // For each image, process it and update the accumulated image data
+        for (var i = 0; i < images.length; i++) {
+          ctx.drawImage(images[i], 0, 0);
+
+          // Get image data
+          var imageData = ctx.getImageData(0, 0, imageWidth, imageHeight);
+          var data = imageData.data;
+
+          // Convert to greyscale and apply levels operation
+          for (var j = 0; j < data.length; j += 4) {
+            var grey =
+              0.299 * data[j] + 0.587 * data[j + 1] + 0.114 * data[j + 2];
+            grey = (grey - 50) * (255 / (200 - 50)); // Example levels operation
+            grey = Math.max(0, Math.min(255, grey)); // Clamp values between 0 and 255
+            data[j] = data[j + 1] = data[j + 2] = grey;
+          }
+
+          // Update accumulated image data
+          var frameCount = i + 1;
+          var alpha = 1 / frameCount;
+          var beta = 1 - alpha;
+          for (var j = 0; j < data.length; j += 4) {
+            accumulatedData[j] = accumulatedData[j] * beta + data[j] * alpha;
+            accumulatedData[j + 1] =
+              accumulatedData[j + 1] * beta + data[j + 1] * alpha;
+            accumulatedData[j + 2] =
+              accumulatedData[j + 2] * beta + data[j + 2] * alpha;
+            accumulatedData[j + 3] = 255; // Set alpha to fully opaque
+          }
+
+          ctx.putImageData(accumulatedImageData, 0, 0);
+        }
+
+        // Show the download link
+        var downloadLink = document.getElementById("download_link");
+        downloadLink.href = canvas.toDataURL("image/png");
+        downloadLink.style.display = "inline";
+      }
+
+      function updateFrameRangeDisplay() {
+        var start = document.getElementById("frame_range_start").value;
+        var end = document.getElementById("frame_range_end").value;
+        document.getElementById("frame_range_start_value").textContent = start;
+        document.getElementById("frame_range_end_value").textContent = end;
+      }
+
+      function updateFrameStart() {
+        var start = parseInt(
+          document.getElementById("frame_range_start").value
+        );
+        var end = parseInt(document.getElementById("frame_range_end").value);
+        if (start > end) {
+          document.getElementById("frame_range_end").value = start;
+        }
+        updateFrameRangeDisplay();
+
+        // Seek the video to the start frame
+        video.currentTime = start;
+      }
+
+      function updateFrameEnd() {
+        var start = parseInt(
+          document.getElementById("frame_range_start").value
+        );
+        var end = parseInt(document.getElementById("frame_range_end").value);
+        if (end < start) {
+          document.getElementById("frame_range_start").value = end;
+        }
+        updateFrameRangeDisplay();
+
+        // Seek the video to the end frame
+        video.currentTime = end;
+      }
+    </script>
+  </head>
+  <body>
+    <div id="drop_zone">Drag and drop images or a video file here</div>
+    <div id="source">
+      <div id="source_video_container" class="hidden">
+        <video id="source_video" class="fit-width" controls></video>
+        <div id="frame_range_container">
+          <label for="frame_range">Select Frame Range:</label>
+          <input
+            type="range"
+            id="frame_range_start"
+            min="0"
+            max="100"
+            value="0"
+            oninput="updateFrameStart()"
+          />
+          <span id="frame_range_start_value">0</span>
+          <input
+            type="range"
+            id="frame_range_end"
+            min="0"
+            max="100"
+            value="100"
+            oninput="updateFrameEnd()"
+          />
+          <span id="frame_range_end_value">100</span>
+        </div>
+      </div>
+      <img id="source_image" class="fit-width hidden" />
+      <button id="process_button" disabled onclick="processFiles()">
+        Process
+      </button>
+    </div>
+    <div id="result">
+      <canvas id="result_canvas" class="fit-width"></canvas><br />
+      <a id="download_link" href="#" download="result.png">Download Result</a>
+    </div>
+    <script>
+      document.addEventListener("DOMContentLoaded", function () {
+        var dropZone = document.getElementById("drop_zone");
+        dropZone.addEventListener("dragover", handleDragOver, false);
+        dropZone.addEventListener("drop", handleFileSelect, false);
+      });
+
+      let video = document.getElementById("source_video");
+      let frameRangeStart = document.getElementById("frame_range_start");
+      let frameRangeEnd = document.getElementById("frame_range_end");
+      video.addEventListener("loadedmetadata", function () {
+        var duration = video.duration;
+        frameRangeStart.max = duration;
+        frameRangeEnd.max = duration;
+        // frameRangeEnd.value = duration;
+        updateFrameRangeDisplay();
+      });
+    </script>
+  </body>
+</html>
